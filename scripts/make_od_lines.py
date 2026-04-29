@@ -22,7 +22,7 @@ DATA_DIR = os.path.join(ROOT_DIR, "data")
 print("trips_full.csv 読み込み中...")
 df = pd.read_csv(
     os.path.join(DATA_DIR, "trips_full.csv"),
-    encoding="utf-8-sig",
+    encoding="utf-8",
     low_memory=False,
     dtype={
         "出発地_市町村": str, "出発地_町": str,
@@ -78,7 +78,7 @@ print(f"  expanded_trips 最大: {od['expanded_trips'].max():,.0f}")
 coords_df = pd.read_csv(
     os.path.join(DATA_DIR, "zone_coords.csv"),
     dtype={"city_code": str, "town_code": str},
-    encoding="utf-8-sig",
+    encoding="utf-8",
     usecols=["city_code", "town_code", "pref_name", "city_name", "town_name"],
 )
 name_map = {

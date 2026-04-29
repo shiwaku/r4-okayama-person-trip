@@ -1,25 +1,23 @@
 """
-マスターデータ（平日・休日）の全列に座標を付加し、コード値を読み替えてCSV出力する。
+マスターデータ（平日・休日）の全94列に座標を付加し、コード値を読み替えてCSV出力する。
 
-入力:
-  data/csv/01_master_weekday.csv
-  data/csv/02_master_holiday.csv
-  data/csv/code_ターミナルコード.csv
-  data/zone_coords.csv
+- ヘッダーはExcel行6〜9から自動生成（Excelの列名を忠実に再現）
+- コード値は日本語ラベルに変換
+- 出発地・目的地の緯度経度を末尾に追加
 
-出力:
-  data/trips_full.csv
+出力: trips_full.csv
 """
+import os
 import pandas as pd
-from pathlib import Path
+import openpyxl
 
-ROOT_DIR = Path(__file__).parent.parent
-DATA_DIR = ROOT_DIR / "data"
-CSV_DIR = DATA_DIR / "csv"
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SOURCE_DIR = os.path.join(ROOT_DIR, "source")
+DATA_DIR = os.path.join(ROOT_DIR, "data")
 
 # ── コード定義 ────────────────────────────────────────────────────────────
-SURVEY_DATE = {1: "平日10/12・休日10/16", 2: "平日10/19・休日10/23"}
 GENDER      = {1: "男性", 2: "女性"}
+SURVEY_DATE = {1: "平日10/12・休日10/16", 2: "平日10/19・休日10/23"}
 EMPLOYMENT  = {
     1: "会社員等", 2: "自営(自宅)", 3: "自営(自宅外)",
     4: "農林水産", 5: "主婦(夫)", 6: "生徒・学生", 7: "無職", 9: "未記入",
@@ -33,7 +31,7 @@ FACILITY = {
     9: "飲食店", 10: "宿泊・娯楽", 11: "工場・倉庫", 12: "交通・運輸",
     13: "農林漁業", 14: "その他", 99: "未記入",
 }
-PURPOSE = {
+PURPOSE  = {
     1: "出勤", 2: "登校", 3: "業務", 4: "買物",
     5: "通院", 6: "私用", 7: "帰宅", 8: "その他", 9: "未記入",
 }
@@ -57,38 +55,28 @@ TIME_ZONE = {
 }
 AM_PM = {1: "午前", 2: "午後"}
 
-# 列名 → 変換マッピング
+# 列インデックス → 変換マッピング（県内フラグは関数で処理）
 CODE_MAP = {
-    "調査日_ロット番号":    SURVEY_DATE,
-    "性別":               GENDER,
-    "就業・就学状況":      EMPLOYMENT,
-    "免許の有無":          LICENSE,
-    "自由に使える自動車":  HAS_CAR,
-    "移動の有無":          HAS_TRIP,
-    "出発地_施設の種類":   FACILITY,
-    "目的地_施設の種類":   FACILITY,
-    "出発_午前1 午後2":   AM_PM,
-    "到着_午前1 午後2":   AM_PM,
-    "移動目的":            PURPOSE,
-    "交通手段_①":         MODE,
-    "交通手段_②":         MODE,
-    "交通手段_③":         MODE,
-    "交通手段_④":         MODE,
-    "交通手段_⑤":         MODE,
-    "年齢階層コード":      AGE_GROUP,
-    "代表交通手段":        MODE,
-    "時間帯コード":        TIME_ZONE,
+    4:  SURVEY_DATE,
+    5:  GENDER,
+    8:  EMPLOYMENT,
+    9:  LICENSE,
+    10: HAS_CAR,
+    11: HAS_TRIP,
+    15: FACILITY,
+    18: FACILITY,
+    19: AM_PM,
+    22: AM_PM,
+    25: PURPOSE,
+    26: MODE, 27: MODE, 28: MODE, 29: MODE, 30: MODE,
+    39: AGE_GROUP,
+    40: MODE,
+    41: TIME_ZONE,
 }
-
-TERMINAL_COLS = [
-    "利用ターミナル_利用した駅、電停、バス停_①",
-    "利用ターミナル_②", "利用ターミナル_③",
-    "利用ターミナル_④", "利用ターミナル_⑤", "利用ターミナル_⑥",
-]
 
 
 def cv(mapping, val):
-    if pd.isna(val):
+    if val is None:
         return None
     try:
         return mapping.get(int(val), val)
@@ -97,7 +85,7 @@ def cv(mapping, val):
 
 
 def safe_code(v):
-    if pd.isna(v) or str(v) in ("*", "None", ""):
+    if v is None or str(v) in ("*", "None", ""):
         return None
     try:
         return str(int(float(v)))
@@ -105,80 +93,218 @@ def safe_code(v):
         return None
 
 
-# ── ターミナルコード ──────────────────────────────────────────────────────
-print("ターミナルコード読み込み中...")
-term_df = pd.read_csv(CSV_DIR / "code_ターミナルコード.csv", encoding="utf-8-sig")
-terminal = dict(zip(term_df.iloc[:, 0].astype(int), term_df.iloc[:, 1].astype(str)))
-print(f"  {len(terminal)} ターミナル")
+def in_pref_label(v):
+    """●→県内、None/空→県外"""
+    if v == "●":
+        return "県内"
+    if v is None or str(v).strip() == "":
+        return "県外"
+    return v
+
+
+# ── ヘッダー生成（Excel行6〜9から自動構築） ─────────────────────────────
+print("ヘッダー読み込み中...")
+wb_hdr = openpyxl.load_workbook(
+    os.path.join(SOURCE_DIR, "01_R4岡山PTマスターデータ平日.xlsx"), read_only=True
+)
+ws_hdr = wb_hdr["平日"]
+header_rows = [list(r) for r in ws_hdr.iter_rows(min_row=6, max_row=9, values_only=True)]
+wb_hdr.close()
+
+# 省略する長い説明フレーズ
+SKIP_PHRASES = {
+    "問1：あなたご自身のことについて",
+    "問2：調査日にどこかへ移動しましたか？",
+    "移動状況",
+    "集計用コード",
+    "※ここからは、県が作業用に追加した項目です",
+    "●：当該トリップにおいて、1度でも利用された交通手段",
+    "当該トリップにおいて、各交通手段が使われた延べ回数（実数）",
+    "当該トリップにおいて、各交通手段が使われた延べ回数（拡大処理後）",
+    "*",
+}
+
+# 列グループのコンテキストプレフィックス（上位行の文脈を保持）
+GROUP_PREFIX = {
+    6: "自宅住所_", 7: "自宅住所_",
+    13: "出発地_", 14: "出発地_", 15: "出発地_",
+    16: "目的地_", 17: "目的地_", 18: "目的地_",
+    19: "出発_", 20: "出発_", 21: "出発_",
+    22: "到着_", 23: "到着_", 24: "到着_",
+    26: "交通手段_", 27: "交通手段_", 28: "交通手段_", 29: "交通手段_", 30: "交通手段_",
+    31: "利用ターミナル_", 32: "利用ターミナル_", 33: "利用ターミナル_",
+    34: "利用ターミナル_", 35: "利用ターミナル_", 36: "利用ターミナル_",
+    48: "フラグ_", 49: "フラグ_", 50: "フラグ_", 51: "フラグ_", 52: "フラグ_",
+    53: "フラグ_", 54: "フラグ_", 55: "フラグ_", 56: "フラグ_", 57: "フラグ_",
+    58: "フラグ_", 59: "フラグ_", 60: "フラグ_", 61: "フラグ_", 62: "フラグ_",
+    65: "延べ_", 66: "延べ_", 67: "延べ_", 68: "延べ_", 69: "延べ_",
+    70: "延べ_", 71: "延べ_", 72: "延べ_", 73: "延べ_", 74: "延べ_",
+    75: "延べ_", 76: "延べ_", 77: "延べ_", 78: "延べ_",
+    80: "拡大_", 81: "拡大_", 82: "拡大_", 83: "拡大_", 84: "拡大_",
+    85: "拡大_", 86: "拡大_", 87: "拡大_", 88: "拡大_", 89: "拡大_",
+    90: "拡大_", 91: "拡大_", 92: "拡大_", 93: "拡大_",
+}
+
+# 曖昧になりがちな列を明示的に上書き
+OVERRIDE_NAMES = {
+    2:  "SEQ",
+    3:  "サンプルNO",
+    4:  "調査日_ロット番号",
+    37: "移動回数",
+    38: "拡大係数",
+    39: "年齢階層コード",
+    40: "代表交通手段",
+    41: "時間帯コード",
+    44: "発地_県内フラグ",
+    45: "着地_県内フラグ",
+    47: "手段数",
+    53: "フラグ_自動車計",
+    64: "手段数_延べ",
+    79: "手段数_拡大後",
+}
+
+NUM_COLS = 94
+col_names = []
+for col in range(NUM_COLS):
+    if col in OVERRIDE_NAMES:
+        col_names.append(OVERRIDE_NAMES[col])
+        continue
+    parts = []
+    for row in header_rows:
+        v = row[col] if col < len(row) else None
+        if v is not None:
+            s = str(v).replace("\n", " ").strip()
+            if s and s not in SKIP_PHRASES:
+                parts.append(s)
+    label = "_".join(parts) if parts else f"col{col}"
+    prefix = GROUP_PREFIX.get(col, "")
+    if prefix:
+        # プレフィックスがすでに含まれていなければ先頭に付ける
+        bare = prefix.rstrip("_")
+        if not label.startswith(bare):
+            label = prefix + label
+    col_names.append(label)
+
+# 重複排除（同名列に _2, _3 ... を付与）
+seen: dict = {}
+unique_col_names = []
+for name in col_names:
+    if name in seen:
+        seen[name] += 1
+        unique_col_names.append(f"{name}_{seen[name]}")
+    else:
+        seen[name] = 0
+        unique_col_names.append(name)
+
+print("  生成されたヘッダー:")
+for i, n in enumerate(unique_col_names):
+    print(f"    col{i:2d}: {n}")
+
 
 # ── 座標ルックアップ ─────────────────────────────────────────────────────
-print("座標ルックアップ読み込み中...")
+print("\n座標ルックアップ読み込み中...")
 coords_df = pd.read_csv(
-    DATA_DIR / "zone_coords.csv",
+    os.path.join(DATA_DIR, "zone_coords.csv"),
     dtype={"city_code": str, "town_code": str},
-    encoding="utf-8-sig",
+    encoding="utf-8",
 )
-coords = {(r.city_code, r.town_code): (r.lat, r.lon) for r in coords_df.itertuples()}
+coords = {
+    (r.city_code, r.town_code): (r.lat, r.lon)
+    for r in coords_df.itertuples()
+}
 print(f"  {len(coords)} ゾーン")
 
 
+# ── ターミナルコード（列2=コード, 列3=名称） ─────────────────────────────
+print("ターミナルコード読み込み中...")
+wb_code = openpyxl.load_workbook(
+    os.path.join(SOURCE_DIR, "03_コード表.xlsx"), read_only=True
+)
+terminal = {}
+for row in wb_code["ターミナルコード表"].iter_rows(min_row=3, values_only=True):
+    code = row[2]
+    name = row[3]
+    if code is not None:
+        try:
+            terminal[int(code)] = str(name) if name else ""
+        except (ValueError, TypeError):
+            pass
+wb_code.close()
+print(f"  {len(terminal)} ターミナル")
+
+
 # ── データ処理 ───────────────────────────────────────────────────────────
-def process(path: Path, day_type: str) -> pd.DataFrame:
-    print(f"\n{day_type} 読み込み中: {path.name}")
-    df = pd.read_csv(path, encoding="utf-8-sig", dtype=str)
-    df.insert(0, "平休区分", day_type)
+def read_and_process(path, day_type):
+    print(f"\n{day_type} 読み込み中: {os.path.basename(path)}")
+    wb = openpyxl.load_workbook(path, read_only=True)
+    ws = wb[wb.sheetnames[0]]
+    result = []
+    miss_o = miss_d = 0
 
-    # コード値 → ラベル
-    for col, mapping in CODE_MAP.items():
-        if col in df.columns:
-            df[col] = df[col].apply(lambda v: cv(mapping, v))
+    for row in ws.iter_rows(min_row=11, values_only=True):
+        if row[2] is None:
+            continue
+        row = list(row)
 
-    # ターミナルコード → 名称
-    for col in TERMINAL_COLS:
-        if col in df.columns:
-            def _term(v):
-                if pd.isna(v) or str(v).strip() in ("", "nan", "*"):
-                    return None
+        # ターミナルコード → 名称
+        for ti in range(31, 37):
+            v = row[ti]
+            if v is not None:
                 try:
-                    return terminal.get(int(float(v)), v)
+                    row[ti] = terminal.get(int(v), v)
                 except (ValueError, TypeError):
-                    return v
-            df[col] = df[col].apply(_term)
+                    pass
 
-    # 県内フラグ（● = 県内、空 = 県外）
-    for col in ("発地_県内フラグ", "着地_県内フラグ"):
-        if col in df.columns:
-            df[col] = df[col].apply(
-                lambda v: "県内" if v == "●" else ("県外" if pd.isna(v) or str(v).strip() == "" else v)
-            )
+        # コード値 → ラベル
+        for col_idx, mapping in CODE_MAP.items():
+            row[col_idx] = cv(mapping, row[col_idx])
 
-    # 座標結合
-    o_keys = df["出発地_市町村"].apply(safe_code).str.cat(df["出発地_町"].apply(safe_code), sep="__")
-    d_keys = df["目的地_市町村"].apply(safe_code).str.cat(df["目的地_町"].apply(safe_code), sep="__")
+        # 県内フラグ（● = 県内）
+        row[44] = in_pref_label(row[44])
+        row[45] = in_pref_label(row[45])
 
-    coord_map = {f"{c}__{t}": (lat, lon) for (c, t), (lat, lon) in coords.items()}
+        # 座標結合
+        o_city = safe_code(row[13])
+        o_town = safe_code(row[14])
+        d_city = safe_code(row[16])
+        d_town = safe_code(row[17])
+        o_lat, o_lon = coords.get((o_city, o_town), (None, None))
+        d_lat, d_lon = coords.get((d_city, d_town), (None, None))
+        if o_lat is None: miss_o += 1
+        if d_lat is None: miss_d += 1
 
-    df["出発地緯度"]  = o_keys.map(lambda k: coord_map.get(k, (None, None))[0])
-    df["出発地経度"]  = o_keys.map(lambda k: coord_map.get(k, (None, None))[1])
-    df["目的地緯度"]  = d_keys.map(lambda k: coord_map.get(k, (None, None))[0])
-    df["目的地経度"]  = d_keys.map(lambda k: coord_map.get(k, (None, None))[1])
+        rec = {"平休区分": day_type}
+        for i, name in enumerate(unique_col_names):
+            rec[name] = row[i] if i < len(row) else None
+        rec["出発地緯度"] = o_lat
+        rec["出発地経度"] = o_lon
+        rec["目的地緯度"] = d_lat
+        rec["目的地経度"] = d_lon
+        result.append(rec)
 
-    miss_o = df["出発地緯度"].isna().sum()
-    miss_d = df["目的地緯度"].isna().sum()
-    print(f"  {len(df):,} 行  座標なし: 出発地 {miss_o}件, 目的地 {miss_d}件")
-    return df
+    wb.close()
+    print(f"  {len(result):,} 行  座標なし: 出発地 {miss_o}件, 目的地 {miss_d}件")
+    return result
 
 
-dfs = []
+all_records = []
 for fname, day_type in [
-    ("01_master_weekday.csv", "平日"),
-    ("02_master_holiday.csv", "休日"),
+    ("01_R4岡山PTマスターデータ平日.xlsx", "平日"),
+    ("02_R4岡山PTマスターデータ休日.xlsx", "休日"),
 ]:
-    dfs.append(process(CSV_DIR / fname, day_type))
+    all_records.extend(read_and_process(os.path.join(SOURCE_DIR, fname), day_type))
 
 print("\nCSV出力中...")
-df_all = pd.concat(dfs, ignore_index=True)
-out_path = DATA_DIR / "trips_full.csv"
-df_all.to_csv(out_path, index=False, encoding="utf-8-sig")
+df = pd.DataFrame(all_records)
+out_path = os.path.join(DATA_DIR, "trips_full.csv")
+df.to_csv(out_path, index=False, encoding="utf-8")
 print(f"出力完了: {out_path}")
-print(f"総トリップ数: {len(df_all):,} 行  列数: {len(df_all.columns)}")
+print(f"総トリップ数: {len(df):,} 行  列数: {len(df.columns)}")
+print("\n先頭1行（主要列）:")
+show_cols = [
+    "平休区分", "SEQ", "サンプルNO", "調査日_ロット番号", "性別", "年齢階層コード",
+    "就業・就学状況", "移動の有無", "トリップ番号", "移動目的", "代表交通手段",
+    "時間帯コード", "拡大係数", "発地_県内フラグ", "着地_県内フラグ",
+    "出発地緯度", "出発地経度", "目的地緯度", "目的地経度",
+]
+print(df[show_cols].head(3).to_string())

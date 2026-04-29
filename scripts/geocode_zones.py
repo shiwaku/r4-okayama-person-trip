@@ -1,100 +1,92 @@
 """
 マスターデータのゾーンコードに座標を付加するスクリプト
-
-入力:
-  data/csv/code_ゾーンコード.csv
-  data/csv/01_master_weekday.csv
-  data/csv/02_master_holiday.csv
-
-出力:
-  data/zone_coords.csv
-  data/zone_coords.geojson
+1. ゾーンコード表から (市町村コード, 大字・町コード) → 住所名 を構築
+2. 国土地理院APIでジオコーディング
+3. 座標ルックアップCSVを出力
 """
+import openpyxl
+import pandas as pd
+import urllib.request
+import urllib.parse
 import json
 import time
-import urllib.parse
-import urllib.request
-from collections import defaultdict
-from pathlib import Path
+import os
+from collections import Counter, defaultdict
 
-import pandas as pd
-
-ROOT_DIR = Path(__file__).parent.parent
-DATA_DIR = ROOT_DIR / "data"
-CSV_DIR = DATA_DIR / "csv"
-CACHE_FILE = DATA_DIR / "geocode_cache.json"
-OUTPUT_FILE = DATA_DIR / "zone_coords.csv"
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SOURCE_DIR = os.path.join(ROOT_DIR, "source")
+DATA_DIR = os.path.join(ROOT_DIR, "data")
+CACHE_FILE = os.path.join(DATA_DIR, "geocode_cache.json")
+OUTPUT_FILE = os.path.join(DATA_DIR, "zone_coords.csv")
 
 # ── Step 1: ゾーンコード表から住所名ルックアップを構築 ──────────────────
 print("Step 1: ゾーンコード表を読み込み中...")
-zone_df = pd.read_csv(CSV_DIR / "code_ゾーンコード.csv", encoding="utf-8-sig", dtype=str)
+wb = openpyxl.load_workbook(os.path.join(SOURCE_DIR, "03_コード表.xlsx"), read_only=True)
+ws = wb["ｿﾞｰﾝｺｰﾄﾞ表"]
+rows = list(ws.iter_rows(min_row=9, values_only=True))  # 8行目がヘッダー
+wb.close()
 
-# (city_code, town_code) → [(pref_name, city_name, town_name, chome), ...]
-COL_PREF      = "都道府県名"
-COL_CITY      = "市区町村名"
-COL_TOWN      = "大字町丁目名"
-COL_CITY_CODE = "都道府県+\n市区町村"
-COL_TOWN_CODE = "大字・町"
-COL_CHOME     = "丁目"
-
+# (city_code, town_code) → [(pref_name, city_name, town_name), ...]
 zone_names = defaultdict(list)
-for _, r in zone_df.iterrows():
-    pref = r[COL_PREF]
-    city = r[COL_CITY]
-    town = r[COL_TOWN]
-    f    = r[COL_CITY_CODE]
-    g    = r[COL_TOWN_CODE]
-    h    = r[COL_CHOME]
-
-    if pd.isna(pref) or pd.isna(city) or pd.isna(town) or pd.isna(f) or pd.isna(g):
+for r in rows:
+    pref = r[1]   # 都道府県名
+    city = r[2]   # 市区町村名
+    town = r[3]   # 大字町丁目名
+    f    = r[5]   # 市区町村コード(5桁)
+    g    = r[6]   # 大字・町コード(3桁)
+    h    = r[7]   # 丁目コード(2桁)
+    if not (pref and city and town and f and g is not None):
         continue
     try:
-        city_code = str(int(float(f)))
-        town_code = str(int(float(g)))
+        city_code = str(f)
+        town_code = str(int(str(g).lstrip("0") or "0"))  # "001" → "1"
     except (ValueError, TypeError):
         continue
-    chome = str(int(float(h))) if pd.notna(h) else "0"
-    zone_names[(city_code, town_code)].append((pref, city, town, chome))
+    zone_names[(city_code, town_code)].append((pref, city, town, str(h or "00")))
 
 print(f"  ゾーン種類数（コード表）: {len(zone_names)}")
 
-
+# 各 (city_code, town_code) の代表住所を決定
+# 優先: 丁目コード="00"（丁目なし） → なければ最初のエントリ
 def pick_address(entries):
     for pref, city, town, chome in entries:
-        if chome == "0":
+        if chome == "00":
             return pref, city, town
     return entries[0][0], entries[0][1], entries[0][2]
 
 zone_address = {k: pick_address(v) for k, v in zone_names.items()}
 
-# ── Step 2: マスターデータで使われているゾーンコードを収集 ────────────────
+# ── Step 2: マスターデータ（平日・休日）で使われているゾーンコードを収集 ──
 print("Step 2: マスターデータのゾーンコードを収集中...")
 all_codes = set()
-for fname in ("01_master_weekday.csv", "02_master_holiday.csv"):
-    df = pd.read_csv(CSV_DIR / fname, encoding="utf-8-sig", dtype=str,
-                     usecols=["出発地_市町村", "出発地_町", "目的地_市町村", "目的地_町"])
-    for col_city, col_town in [("出発地_市町村", "出発地_町"), ("目的地_市町村", "目的地_町")]:
-        pairs = df[[col_city, col_town]].dropna()
-        pairs = pairs[~pairs[col_town].isin(["*", "nan", ""])]
-        for _, row in pairs.iterrows():
+for fname in ["01_R4岡山PTマスターデータ平日.xlsx", "02_R4岡山PTマスターデータ休日.xlsx"]:
+    wb = openpyxl.load_workbook(os.path.join(SOURCE_DIR, fname), read_only=True)
+    ws = wb[wb.sheetnames[0]]
+    for row in ws.iter_rows(min_row=11, values_only=True):
+        if row[2] is None:
+            continue
+        for col_city, col_town in [(13, 14), (16, 17)]:  # 出発地, 目的地
             try:
-                all_codes.add((str(int(float(row[col_city]))), str(int(float(row[col_town])))))
+                if row[col_city] and row[col_town] and str(row[col_town]) not in ("*", "None"):
+                    all_codes.add((str(row[col_city]), str(int(float(row[col_town])))))
             except (ValueError, TypeError):
                 pass
+    wb.close()
 
 print(f"  ユニークゾーン数: {len(all_codes)}")
 
 # ── Step 3: ジオコーディング（キャッシュ付き） ────────────────────────
 print("Step 3: ジオコーディング中...")
 
+# キャッシュ読み込み
 cache = {}
-if CACHE_FILE.exists():
+if os.path.exists(CACHE_FILE):
     with open(CACHE_FILE, encoding="utf-8") as f:
         cache = json.load(f)
     print(f"  キャッシュ読み込み: {len(cache)}件")
 
-
 def geocode(address):
+    """国土地理院APIで住所→(lat,lon)"""
     if address in cache:
         return cache[address]
     url = f"https://msearch.gsi.go.jp/address-search/AddressSearch?q={urllib.parse.quote(address)}"
@@ -102,71 +94,111 @@ def geocode(address):
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         resp = urllib.request.urlopen(req, timeout=10)
         data = json.loads(resp.read())
-        result = {"lon": data[0]["geometry"]["coordinates"][0],
-                  "lat": data[0]["geometry"]["coordinates"][1]} if data else {"lon": None, "lat": None}
-    except Exception:
+        if data:
+            coords = data[0]["geometry"]["coordinates"]
+            result = {"lon": coords[0], "lat": coords[1]}
+        else:
+            result = {"lon": None, "lat": None}
+    except Exception as e:
         result = {"lon": None, "lat": None}
     cache[address] = result
     time.sleep(0.3)
     return result
 
+# 未キャッシュのアドレスを構築してジオコーディング
+to_geocode = {}
+for code in all_codes:
+    if code in zone_address:
+        pref, city, town = zone_address[code]
+        addr = pref + city + town
+    else:
+        # コード表に存在しない（県外など）: 市町村名のみ
+        addr = None
+    to_geocode[code] = addr
 
-to_geocode = {
-    code: "".join(zone_address[code]) if code in zone_address else None
-    for code in all_codes
-}
-
-unique_addresses = {a for a in to_geocode.values() if a and a not in cache}
+unique_addresses = set(a for a in to_geocode.values() if a and a not in cache)
 total = len(unique_addresses)
 print(f"  未キャッシュのアドレス: {total}件")
 
-for done, addr in enumerate(unique_addresses, 1):
+done = 0
+for addr in unique_addresses:
     geocode(addr)
+    done += 1
     if done % 100 == 0:
+        # 途中経過とキャッシュ保存
         with open(CACHE_FILE, "w", encoding="utf-8") as f:
             json.dump(cache, f, ensure_ascii=False)
         print(f"  進捗: {done}/{total}")
 
+# 最終保存
 with open(CACHE_FILE, "w", encoding="utf-8") as f:
     json.dump(cache, f, ensure_ascii=False)
-print(f"  完了: {total}件ジオコーディング, キャッシュ保存済み")
+print(f"  完了: {done}件ジオコーディング, キャッシュ保存済み")
 
-# ── Step 4: ゾーン座標テーブルCSV出力 ──────────────────────────────────
+# ── Step 4: ゾーン座標テーブルCSV出力 ──────────────────────────────
 print("Step 4: 座標テーブルを出力中...")
+
 records = []
-no_address = no_coords = 0
+no_address = 0
+no_coords = 0
 
 for code in sorted(all_codes):
     city_code, town_code = code
     addr = to_geocode.get(code)
-    result = cache.get(addr, {"lon": None, "lat": None}) if addr else {"lon": None, "lat": None}
-    if not addr:
+    if addr:
+        result = cache.get(addr, {"lon": None, "lat": None})
+    else:
+        result = {"lon": None, "lat": None}
         no_address += 1
+
     if result["lat"] is None:
         no_coords += 1
+
     pref_name, city_name, town_name = zone_address.get(code, ("", "", ""))
     records.append({
-        "city_code": city_code, "town_code": town_code,
-        "pref_name": pref_name, "city_name": city_name, "town_name": town_name,
+        "city_code": city_code,
+        "town_code": town_code,
+        "pref_name": pref_name,
+        "city_name": city_name,
+        "town_name": town_name,
         "address": addr or "",
-        "lat": result["lat"], "lon": result["lon"],
+        "lat": result["lat"],
+        "lon": result["lon"],
     })
 
-pd.DataFrame(records).to_csv(OUTPUT_FILE, index=False, encoding="utf-8-sig")
-print(f"  出力: {OUTPUT_FILE}  総ゾーン数: {len(records)}  住所名なし: {no_address}件  座標取得失敗: {no_coords}件")
+df = pd.DataFrame(records)
+df.to_csv(OUTPUT_FILE, index=False, encoding="utf-8")
+print(f"  出力: {OUTPUT_FILE}")
+print(f"  総ゾーン数: {len(records)}")
+print(f"  住所名なし: {no_address}件")
+print(f"  座標取得失敗: {no_coords}件")
 
-# ── Step 5: GeoJSON出力 ─────────────────────────────────────────────────
+# ── Step 5: GeoJSON出力 ─────────────────────────────────────────────
 print("Step 5: GeoJSONを出力中...")
-features = [
-    {
+GEOJSON_FILE = os.path.join(DATA_DIR, "zone_coords.geojson")
+
+features = []
+for rec in records:
+    if rec["lat"] is None or rec["lon"] is None:
+        continue
+    features.append({
         "type": "Feature",
-        "geometry": {"type": "Point", "coordinates": [r["lon"], r["lat"]]},
-        "properties": {k: r[k] for k in ("city_code", "town_code", "pref_name", "city_name", "town_name", "address")},
-    }
-    for r in records if r["lat"] is not None
-]
-geojson_path = DATA_DIR / "zone_coords.geojson"
-with open(geojson_path, "w", encoding="utf-8") as f:
-    json.dump({"type": "FeatureCollection", "features": features}, f, ensure_ascii=False, indent=2)
-print(f"  出力: {geojson_path} ({len(features)}点)")
+        "geometry": {
+            "type": "Point",
+            "coordinates": [rec["lon"], rec["lat"]],
+        },
+        "properties": {
+            "city_code": rec["city_code"],
+            "town_code": rec["town_code"],
+            "pref_name": rec["pref_name"],
+            "city_name": rec["city_name"],
+            "town_name": rec["town_name"],
+            "address":   rec["address"],
+        },
+    })
+
+geojson = {"type": "FeatureCollection", "features": features}
+with open(GEOJSON_FILE, "w", encoding="utf-8") as f:
+    json.dump(geojson, f, ensure_ascii=False, indent=2)
+print(f"  出力: {GEOJSON_FILE} ({len(features)}点)")
 print("Done.")
