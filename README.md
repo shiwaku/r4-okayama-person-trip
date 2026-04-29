@@ -105,10 +105,14 @@ python scripts/make_zone_polygons.py
 | `zone_key` | city_code(5桁) + town_code(3桁ゼロ埋め) の8桁キー |
 | `city_code` / `town_code` | 市区町村コード・大字町コード |
 | `city_name` / `town_name` | 市区町村名・大字町名 |
-| `polygon_source` | `e-stat`=国勢調査ポリゴン（1,392件）、`voronoi`=ボロノイ補完（637件） |
+| `polygon_source` | `e-stat`=KEY_CODE直接マッチ（1,392件）、`name`=町丁名マッチ（630件）、`city`=市区町村ポリゴン補完（7件） |
 
-e-Stat 令和2年国勢調査 小地域データ（KEY_CODE先頭8桁でディゾルブ）を使用。
-PT調査コードと国勢調査コードのズレにより637件未マッチ → 点座標からボロノイ分割で補完。
+e-Stat 令和2年国勢調査 小地域データを使用。マッチング手順:
+1. KEY_CODE 先頭8桁での直接マッチ（1,392件）
+2. PT調査ゾーンコード表の町丁名と e-Stat S_NAME での名前マッチ（630件）
+3. 市区町村レベルのポリゴン補完（7件）
+
+124件（県外・都道府県単位ゾーン）はポリゴンなし（e-Stat岡山県データ対象外）。
 
 ### zone_coords.csv
 

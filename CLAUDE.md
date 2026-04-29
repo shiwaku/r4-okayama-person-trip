@@ -160,7 +160,7 @@
 | `geocode_zones.py` | ゾーンコード表から住所名を構築し国土地理院APIでジオコーディング → `zone_coords.csv` / `zone_coords.geojson` を出力 |
 | `make_trips_full.py` | 平日・休日マスターデータの全94列にゾーン座標を結合し、コード値を日本語ラベルに変換して `trips_full.csv` を出力 |
 | `make_od_lines.py` | `trips_full.csv` をODペア別に集計し、LineString GeoJSON／GeoParquetを出力 |
-| `make_zone_polygons.py` | e-Stat 令和2年国勢調査 小地域データからゾーンポリゴンを生成。未マッチゾーン（637件）はボロノイ補完 → `zone_polygons.geojson` / `zone_polygons.parquet` を出力 |
+| `make_zone_polygons.py` | e-Stat 令和2年国勢調査 小地域データからゾーンポリゴンを生成。KEY_CODE直接マッチ(1,392)→町丁名マッチ(630)→市区町村ポリゴン補完(7)の3段階マッチング → `zone_polygons.geojson` / `zone_polygons.parquet` を出力 |
 
 スクリプト内のパス: `ROOT_DIR`=プロジェクトルート、`DATA_DIR`=`data/`
 
@@ -170,8 +170,8 @@
 |---|---|---|---|
 | `zone_coords.csv` | ゾーンコード（市町村コード+町コード）→座標の対応表 | 2,029ゾーン | ✓ |
 | `zone_coords.geojson` | 同上のGeoJSON（Pointフィーチャ） | 2,029点 | ✓ |
-| `zone_polygons.geojson` | ゾーンポリゴン（e-stat: 1,392件 + voronoi: 637件） | 2,029フィーチャ | ✓ |
-| `zone_polygons.parquet` | 同上のGeoParquet（6.7MB） | 2,029フィーチャ | ✓ |
+| `zone_polygons.geojson` | ゾーンポリゴン（e-stat: 1,392 + name: 630 + city: 7） | 2,029フィーチャ | ✓ |
+| `zone_polygons.parquet` | 同上のGeoParquet（7.5MB） | 2,029フィーチャ | ✓ |
 | `od_lines.parquet` | ODペア別トリップ集計のGeoParquet（1.4MB） | 56,054フィーチャ | ✓ |
 | `trips_full.csv` | 平日・休日全トリップ、全94列＋座標4列、コード読み替え済み | 124,082行 × 99列 | .gitignore |
 | `od_lines.geojson` | ODペア別トリップ集計のLineString GeoJSON（20MB） | 56,054フィーチャ | .gitignore |
@@ -191,7 +191,7 @@
 | `zone_key` | city_code(5桁) + town_code(3桁ゼロ埋め) の8桁キー |
 | `city_code` / `town_code` | 市区町村コード・大字町コード |
 | `city_name` / `town_name` | 市区町村名・大字町名 |
-| `polygon_source` | `e-stat`=国勢調査ポリゴン、`voronoi`=ボロノイ補完 |
+| `polygon_source` | `e-stat`=KEY_CODE直接マッチ、`name`=町丁名マッチ、`city`=市区町村ポリゴン補完 |
 
 ### od_lines の属性
 
