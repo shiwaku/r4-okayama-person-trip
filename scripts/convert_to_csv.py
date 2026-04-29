@@ -32,15 +32,97 @@ CSV_DIR = DATA_DIR / "csv"
 CSV_DIR.mkdir(exist_ok=True)
 
 
+# ── マスターデータ用ヘッダー生成（Excel行6〜9から構築） ──────────────────────
+
+SKIP_PHRASES = {
+    "問1：あなたご自身のことについて",
+    "問2：調査日にどこかへ移動しましたか？",
+    "移動状況", "集計用コード",
+    "※ここからは、県が作業用に追加した項目です",
+    "●：当該トリップにおいて、1度でも利用された交通手段",
+    "当該トリップにおいて、各交通手段が使われた延べ回数（実数）",
+    "当該トリップにおいて、各交通手段が使われた延べ回数（拡大処理後）",
+    "*",
+}
+GROUP_PREFIX = {
+    6: "自宅住所_", 7: "自宅住所_",
+    13: "出発地_", 14: "出発地_", 15: "出発地_",
+    16: "目的地_", 17: "目的地_", 18: "目的地_",
+    19: "出発_", 20: "出発_", 21: "出発_",
+    22: "到着_", 23: "到着_", 24: "到着_",
+    26: "交通手段_", 27: "交通手段_", 28: "交通手段_", 29: "交通手段_", 30: "交通手段_",
+    31: "利用ターミナル_", 32: "利用ターミナル_", 33: "利用ターミナル_",
+    34: "利用ターミナル_", 35: "利用ターミナル_", 36: "利用ターミナル_",
+    48: "フラグ_", 49: "フラグ_", 50: "フラグ_", 51: "フラグ_", 52: "フラグ_",
+    53: "フラグ_", 54: "フラグ_", 55: "フラグ_", 56: "フラグ_", 57: "フラグ_",
+    58: "フラグ_", 59: "フラグ_", 60: "フラグ_", 61: "フラグ_", 62: "フラグ_",
+    65: "延べ_", 66: "延べ_", 67: "延べ_", 68: "延べ_", 69: "延べ_",
+    70: "延べ_", 71: "延べ_", 72: "延べ_", 73: "延べ_", 74: "延べ_",
+    75: "延べ_", 76: "延べ_", 77: "延べ_", 78: "延べ_",
+    80: "拡大_", 81: "拡大_", 82: "拡大_", 83: "拡大_", 84: "拡大_",
+    85: "拡大_", 86: "拡大_", 87: "拡大_", 88: "拡大_", 89: "拡大_",
+    90: "拡大_", 91: "拡大_", 92: "拡大_", 93: "拡大_",
+}
+OVERRIDE_NAMES = {
+    2:  "SEQ", 3:  "サンプルNO", 4:  "調査日_ロット番号",
+    37: "移動回数", 38: "拡大係数", 39: "年齢階層コード",
+    40: "代表交通手段", 41: "時間帯コード",
+    44: "発地_県内フラグ", 45: "着地_県内フラグ", 47: "手段数",
+    53: "フラグ_自動車計", 64: "手段数_延べ", 79: "手段数_拡大後",
+}
+
+def build_col_names() -> list[str]:
+    wb = openpyxl.load_workbook(
+        SOURCE_DIR / "01_R4岡山PTマスターデータ平日.xlsx", read_only=True, data_only=True
+    )
+    ws = wb["平日"]
+    header_rows = [list(r) for r in ws.iter_rows(min_row=6, max_row=9, values_only=True)]
+    wb.close()
+
+    col_names = []
+    for col in range(94):
+        if col in OVERRIDE_NAMES:
+            col_names.append(OVERRIDE_NAMES[col])
+            continue
+        parts = []
+        for row in header_rows:
+            v = row[col] if col < len(row) else None
+            if v is not None:
+                s = str(v).replace("\n", " ").strip()
+                if s and s not in SKIP_PHRASES:
+                    parts.append(s)
+        label = "_".join(parts) if parts else f"col{col}"
+        prefix = GROUP_PREFIX.get(col, "")
+        if prefix:
+            bare = prefix.rstrip("_")
+            if not label.startswith(bare):
+                label = prefix + label
+        col_names.append(label)
+
+    # 重複排除
+    seen: dict = {}
+    unique = []
+    for name in col_names:
+        if name in seen:
+            seen[name] += 1
+            unique.append(f"{name}_{seen[name]}")
+        else:
+            seen[name] = 0
+            unique.append(name)
+
+    # A列・B列（index 0,1）を除去して返す
+    return unique[2:]
+
+
 # ── マスターデータ ──────────────────────────────────────────────────────────
 
-def convert_master(fname: str, out_name: str):
+def convert_master(fname: str, out_name: str, col_names: list[str]):
     path = SOURCE_DIR / fname
     print(f"{fname} → {out_name} ...")
     df = pd.read_excel(path, header=None, skiprows=10, dtype=str)
-    # A列・B列（index 0,1）は常に空なので除去
     df = df.drop(columns=[0, 1])
-    df.to_csv(CSV_DIR / out_name, index=False, header=False, encoding="utf-8-sig")
+    df.columns = col_names
+    df.to_csv(CSV_DIR / out_name, index=False, encoding="utf-8-sig")
     print(f"  {len(df)} 行, {len(df.columns)} 列")
 
 
@@ -137,8 +219,9 @@ def convert_code_tables():
 
 if __name__ == "__main__":
     print("=== マスターデータ変換 ===")
-    convert_master("01_R4岡山PTマスターデータ平日.xlsx", "01_master_weekday.csv")
-    convert_master("02_R4岡山PTマスターデータ休日.xlsx", "02_master_holiday.csv")
+    col_names = build_col_names()
+    convert_master("01_R4岡山PTマスターデータ平日.xlsx", "01_master_weekday.csv", col_names)
+    convert_master("02_R4岡山PTマスターデータ休日.xlsx", "02_master_holiday.csv", col_names)
 
     print("\n=== コード表変換 ===")
     convert_code_tables()
