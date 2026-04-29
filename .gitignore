@@ -3,8 +3,13 @@
 # QGISプロジェクト
 qgis/
 
-# e-Stat ダウンロード一時データ
+# e-Stat / 法務省 ダウンロード一時データ
 data/estat_r2ka33/
+data/moj_parcel/
+
+# Python キャッシュ
+__pycache__/
+*.pyc
 
 # スクリプト生成物（大ファイル）
 data/trips_full.csv

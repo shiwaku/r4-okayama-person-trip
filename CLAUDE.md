@@ -157,10 +157,10 @@
 
 | ファイル | 内容 |
 |---|---|
-| `geocode_zones.py` | ゾーンコード表から住所名を構築し国土地理院APIでジオコーディング → `zone_coords.csv` / `zone_coords.geojson` を出力 |
 | `make_trips_full.py` | 平日・休日マスターデータの全94列にゾーン座標を結合し、コード値を日本語ラベルに変換して `trips_full.csv` を出力 |
 | `make_od_lines.py` | `trips_full.csv` をODペア別に集計し、LineString GeoJSON／GeoParquetを出力 |
-| `make_zone_polygons.py` | e-Stat 令和2年国勢調査 小地域データからゾーンポリゴンを生成。KEY_CODE直接マッチ(1,392)→町丁名マッチ(630)→市区町村ポリゴン補完(7)の3段階マッチング → `zone_polygons.geojson` / `zone_polygons.parquet` を出力 |
+| `make_zone_polygons.py` | e-Stat 令和2年国勢調査 小地域データからゾーンポリゴンを生成。ゾーンコード表の大字町丁目名で名前マッチング（括弧除去・異体字変換・旧市町村名プレフィックス除去・大字サブ区画union・X町→X新開等の派生サブ区画取得・1文字ゾーン名の oaza_code 別共通プレフィックス確認など多段階正規化）→ e-Statにない地名は登記所備付地図（法務省）GeoJSONで補完 → `zone_polygons.geojson` / `zone_polygons.parquet` / `zone_coords.csv` / `zone_coords.geojson`（ポリゴン重心）を出力 |
+| `geocode_zones.py` | 旧: 国土地理院APIでジオコーディング。現在は make_zone_polygons.py がポリゴン重心から zone_coords を生成するため不要 |
 
 スクリプト内のパス: `ROOT_DIR`=プロジェクトルート、`DATA_DIR`=`data/`
 
@@ -168,10 +168,10 @@
 
 | ファイル | 内容 | 件数 | git |
 |---|---|---|---|
-| `zone_coords.csv` | ゾーンコード（市町村コード+町コード）→座標の対応表 | 2,029ゾーン | ✓ |
-| `zone_coords.geojson` | 同上のGeoJSON（Pointフィーチャ） | 2,029点 | ✓ |
-| `zone_polygons.geojson` | ゾーンポリゴン（e-stat: 1,392 + name: 630 + city: 7） | 2,029フィーチャ | ✓ |
-| `zone_polygons.parquet` | 同上のGeoParquet（7.5MB） | 2,029フィーチャ | ✓ |
+| `zone_coords.csv` | ゾーンポリゴン重心の座標対応表（zone_key・lat・lon） | 2,208ゾーン | ✓ |
+| `zone_coords.geojson` | 同上のGeoJSON（Pointフィーチャ） | 2,208点 | ✓ |
+| `zone_polygons.geojson` | ゾーンポリゴン（name:2206 + moj:2） | 2,208フィーチャ | ✓ |
+| `zone_polygons.parquet` | 同上のGeoParquet（8.6MB） | 2,208フィーチャ | ✓ |
 | `od_lines.parquet` | ODペア別トリップ集計のGeoParquet（1.4MB） | 56,054フィーチャ | ✓ |
 | `trips_full.csv` | 平日・休日全トリップ、全94列＋座標4列、コード読み替え済み | 124,082行 × 99列 | .gitignore |
 | `od_lines.geojson` | ODペア別トリップ集計のLineString GeoJSON（20MB） | 56,054フィーチャ | .gitignore |
@@ -191,7 +191,9 @@
 | `zone_key` | city_code(5桁) + town_code(3桁ゼロ埋め) の8桁キー |
 | `city_code` / `town_code` | 市区町村コード・大字町コード |
 | `city_name` / `town_name` | 市区町村名・大字町名 |
-| `polygon_source` | `e-stat`=KEY_CODE直接マッチ、`name`=町丁名マッチ、`city`=市区町村ポリゴン補完 |
+| `polygon_source` | `name`=e-Stat 町丁名マッチ（2206件）、`moj`=登記所備付地図大字名マッチ（2件） |
+
+※ 3件（津山市加茂町齋野谷、高梁市川上町吉木、新庄村長床）は e-Stat・MOJ どちらにも存在しないためポリゴンなし（出力に含まれない）。
 
 ### od_lines の属性
 
