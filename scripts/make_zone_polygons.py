@@ -19,7 +19,6 @@ KEY_CODE構造（e-Stat）:
 
 import io
 import zipfile
-import tempfile
 import requests
 import geopandas as gpd
 import pandas as pd
@@ -28,6 +27,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).parent.parent
 DATA_DIR = ROOT_DIR / "data"
 CSV_DIR = DATA_DIR / "csv"
+ESTAT_CACHE_DIR = DATA_DIR / "estat_r2ka33"
 
 # e-Stat 令和2年国勢調査 小地域（岡山県・JGD2011）
 ESTAT_URL = (
@@ -37,18 +37,25 @@ ESTAT_URL = (
 )
 
 
-def download_shapefile(url: str) -> gpd.GeoDataFrame:
+def load_shapefile() -> gpd.GeoDataFrame:
+    shp_path = ESTAT_CACHE_DIR / "r2ka33.shp"
+    if shp_path.exists():
+        print(f"e-Stat キャッシュ読み込み: {shp_path}")
+        gdf = gpd.read_file(str(shp_path))
+        print(f"  {len(gdf)} レコード, CRS={gdf.crs}")
+        return gdf
+
     print("e-Stat ダウンロード中...")
-    r = requests.get(url, timeout=120)
+    r = requests.get(ESTAT_URL, timeout=120)
     r.raise_for_status()
     print(f"  {len(r.content) / 1024 / 1024:.1f} MB")
-    with tempfile.TemporaryDirectory() as tmpdir:
-        with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
-            zf.extractall(tmpdir)
-        shp_files = list(Path(tmpdir).rglob("*.shp"))
-        if not shp_files:
-            raise RuntimeError("shpファイルが見つかりません")
-        gdf = gpd.read_file(str(shp_files[0]))
+    ESTAT_CACHE_DIR.mkdir(exist_ok=True)
+    with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+        zf.extractall(str(ESTAT_CACHE_DIR))
+    shp_files = list(ESTAT_CACHE_DIR.rglob("*.shp"))
+    if not shp_files:
+        raise RuntimeError("shpファイルが見つかりません")
+    gdf = gpd.read_file(str(shp_files[0]))
     print(f"  {shp_files[0].name}: {len(gdf)} レコード, CRS={gdf.crs}")
     return gdf
 
@@ -87,7 +94,7 @@ def main():
     )
 
     # ── e-Stat 小地域データ取得 ─────────────────────────────────────────
-    gdf = download_shapefile(ESTAT_URL)
+    gdf = load_shapefile()
     gdf["zone_key"] = gdf["KEY_CODE"].astype(str).str[:8]
     gdf["city_code_e"] = gdf["KEY_CODE"].astype(str).str[:5]
     gdf["s_name_clean"] = gdf["S_NAME"].str.strip()
