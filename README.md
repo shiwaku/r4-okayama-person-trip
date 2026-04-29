@@ -62,7 +62,7 @@ python scripts/convert_to_csv.py
 # 2. ゾーンコードに座標を付与（初回のみ・APIアクセスあり）
 python scripts/geocode_zones.py
 
-# 3. 全トリップCSV生成（平日・休日マスターデータが必要）
+# 3. 全トリップCSV生成（1・2の完了後）
 python scripts/make_trips_full.py
 
 # 4. OD集計・GeoJSON/GeoParquet生成
