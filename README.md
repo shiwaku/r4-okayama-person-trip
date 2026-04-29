@@ -16,9 +16,9 @@
 
 ```
 /
-├── source/                        # 原本データ（要別途入手）
-│   ├── 01_R4岡山PTマスターデータ平日.xlsx  ※gitignore
-│   ├── 02_R4岡山PTマスターデータ休日.xlsx  ※gitignore
+├── source/                        # 原本データ
+│   ├── 01_R4岡山PTマスターデータ平日.xlsx
+│   ├── 02_R4岡山PTマスターデータ休日.xlsx
 │   ├── 03_コード表.xlsx
 │   └── 04_拡大係数の設定.pdf
 ├── scripts/
@@ -46,7 +46,7 @@
     └── Map.qgz
 ```
 
-`source/` の01・02ファイルはサイズ大のため `.gitignore` 対象。上記出典から入手して `source/` に配置してください。
+データ出典: [おかやまオープンデータカタログ](https://www.okayama-opendata.jp/datasets/6694)
 
 ---
 
