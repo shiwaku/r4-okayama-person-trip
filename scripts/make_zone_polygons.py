@@ -86,7 +86,7 @@ def main():
     zone_df = pd.read_csv(
         DATA_DIR / "zone_coords.csv",
         dtype={"city_code": str, "town_code": str},
-        encoding="utf-8-sig",
+        encoding="utf-8",
     )
     zone_df["zone_key"] = zone_df["city_code"] + zone_df["town_code"].str.zfill(3)
     zone_attrs = (
