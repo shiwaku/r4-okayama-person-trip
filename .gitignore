@@ -1,0 +1,19 @@
+# 元データ（ファイルサイズ大・別途入手）
+source/01_R4岡山PTマスターデータ平日.xlsx
+source/02_R4岡山PTマスターデータ休日.xlsx
+
+# QGISプロジェクト
+qgis/
+
+# e-Stat ダウンロード一時データ
+data/estat_r2ka33/
+
+# スクリプト生成物（大ファイル）
+data/trips_full.csv
+data/od_lines.geojson
+data/zone_polygons.geojson
+data/geocode_cache.json
+
+# CSV変換出力（マスターデータ分のみ）
+data/csv/01_master_weekday.csv
+data/csv/02_master_holiday.csv
