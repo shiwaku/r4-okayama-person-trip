@@ -144,7 +144,13 @@
 /
 ├── scripts/               # 処理スクリプト
 ├── data/                  # 生成済みデータ
-├── qgis/                  # QGISプロジェクト・スタイル
+│   ├── csv/               # コード表CSV
+│   ├── od/                # OD関連（od_lines.parquet + QML）
+│   ├── pmtiles/           # PMTiles（zone_population_map.pmtiles）
+│   └── zones/             # ゾーン関連（zone_polygons, zone_coords, zone_population + QML）
+├── map/                   # MapLibreウェブマップ
+├── qgis/                  # QGISプロジェクト（.gitignore対象）
+├── serve.py               # Range対応ローカルHTTPサーバー
 ├── 03_コード表.xlsx
 └── 04_拡大係数の設定.pdf
 ```
@@ -157,32 +163,71 @@
 
 | ファイル | 内容 |
 |---|---|
-| `make_trips_full.py` | 平日・休日マスターデータの全94列にゾーン座標を結合し、コード値を日本語ラベルに変換して `trips_full.csv` を出力 |
-| `make_od_lines.py` | `trips_full.csv` をODペア別に集計し、LineString GeoJSON／GeoParquetを出力 |
-| `make_zone_polygons.py` | e-Stat 令和2年国勢調査 小地域データからゾーンポリゴンを生成。ゾーンコード表の大字町丁目名で名前マッチング（括弧除去・異体字変換・旧市町村名プレフィックス除去・大字サブ区画union・X町→X新開等の派生サブ区画取得・1文字ゾーン名の oaza_code 別共通プレフィックス確認など多段階正規化）→ e-Statにない地名は登記所備付地図（法務省）GeoJSONで補完 → `zone_polygons.geojson` / `zone_polygons.parquet` / `zone_coords.csv` / `zone_coords.geojson`（ポリゴン重心）を出力 |
+| `make_trips_full.py` | 平日・休日マスターデータの全94列にゾーン座標を結合し、コード値を日本語ラベルに変換して `data/trips_full.csv` を出力 |
+| `make_od_lines.py` | `trips_full.csv` をODペア別に集計し、LineString GeoJSON／GeoParquetを `data/od/` に出力 |
+| `make_zone_polygons.py` | e-Stat 令和2年国勢調査 小地域データからゾーンポリゴンを生成。ゾーンコード表の大字町丁目名で名前マッチング（括弧除去・異体字変換・旧市町村名プレフィックス除去・大字サブ区画union・X町→X新開等の派生サブ区画取得・1文字ゾーン名の oaza_code 別共通プレフィックス確認など多段階正規化）→ e-Statにない地名は登記所備付地図（法務省）GeoJSONで補完 → `data/zones/` に出力 |
+| `make_zone_population.py` | `trips_full.csv` の滞在ゾーン区間から毎正時スナップショット滞留人口を推計し `data/zones/` に出力 |
+| `make_zone_population_pmtiles.py` | zone_polygons + zone_population を結合して w0-w23（平日）/ h0-h23（休日）属性を埋め込んだ GeoJSON を生成後、tippecanoe で PMTiles に変換。`data/pmtiles/` に出力 |
 | `geocode_zones.py` | 旧: 国土地理院APIでジオコーディング。現在は make_zone_polygons.py がポリゴン重心から zone_coords を生成するため不要 |
 
-スクリプト内のパス: `ROOT_DIR`=プロジェクトルート、`DATA_DIR`=`data/`
+スクリプト内のパス: `ROOT_DIR`=プロジェクトルート、`DATA_DIR`=`data/`、`ZONES_DIR`=`data/zones/`、`OD_DIR`=`data/od/`、`PMTILES_DIR`=`data/pmtiles/`
 
-### データファイル（data/）
+### データファイル（data/zones/）
 
 | ファイル | 内容 | 件数 | git |
 |---|---|---|---|
 | `zone_coords.csv` | ゾーンポリゴン重心の座標対応表（zone_key・lat・lon） | 2,208ゾーン | ✓ |
 | `zone_coords.geojson` | 同上のGeoJSON（Pointフィーチャ） | 2,208点 | ✓ |
-| `zone_polygons.geojson` | ゾーンポリゴン（name:2206 + moj:2） | 2,208フィーチャ | ✓ |
+| `zone_polygons.geojson` | ゾーンポリゴン（name:2206 + moj:2） | 2,208フィーチャ | .gitignore |
 | `zone_polygons.parquet` | 同上のGeoParquet（8.6MB） | 2,208フィーチャ | ✓ |
-| `od_lines.parquet` | ODペア別トリップ集計のGeoParquet（1.4MB） | 56,054フィーチャ | ✓ |
-| `trips_full.csv` | 平日・休日全トリップ、全94列＋座標4列、コード読み替え済み | 124,082行 × 99列 | .gitignore |
-| `od_lines.geojson` | ODペア別トリップ集計のLineString GeoJSON（20MB） | 56,054フィーチャ | .gitignore |
-| `geocode_cache.json` | 国土地理院APIのジオコーディングキャッシュ | - | .gitignore |
+| `zone_population.csv` | 平日・休日結合の滞留人口（分析用） | - | ✓ |
+| `zone_population_weekday.parquet` | 平日 ゾーン×時刻別滞留人口（52MB） | 44,451行 | ✓ |
+| `zone_population_holiday.parquet` | 休日 ゾーン×時刻別滞留人口（51MB） | 42,533行 | ✓ |
+| `zone_population.parquet` | 平日・休日結合 GeoParquet | - | .gitignore |
+| `zone_population*.qml` | QGISスタイル（データと同フォルダに配置、QGIS自動認識） | - | ✓ |
 
-### QMLスタイルファイル（qgis/）
+### データファイル（data/od/）
+
+| ファイル | 内容 | 件数 | git |
+|---|---|---|---|
+| `od_lines.parquet` | ODペア別トリップ集計のGeoParquet（1.4MB） | 56,054フィーチャ | ✓ |
+| `od_lines.geojson` | ODペア別トリップ集計のLineString GeoJSON（20MB） | 56,054フィーチャ | .gitignore |
+| `od_lines.qml` / `od_lines_expanded.qml` | QGISスタイル | - | ✓ |
+
+### データファイル（data/pmtiles/）
+
+| ファイル | 内容 | git |
+|---|---|---|
+| `zone_population_map.pmtiles` | ゾーン別時刻別滞留人口 PMTiles（5.4MB）。w0-w23/h0-h23 属性埋め込み | ✓ |
+| `zone_population_map.geojson` | 上記の中間 GeoJSON（28MB） | .gitignore |
+
+### その他
+
+| ファイル | 内容 | git |
+|---|---|---|
+| `data/trips_full.csv` | 平日・休日全トリップ、全94列＋座標4列、コード読み替え済み（124,082行） | .gitignore |
+| `data/geocode_cache.json` | 国土地理院APIのジオコーディングキャッシュ | .gitignore |
+
+### MapLibreウェブマップ（map/）
 
 | ファイル | 内容 |
 |---|---|
-| `od_lines.qml` | 生トリップ数（`trip_count`）で線幅・透明度を制御。平日=青、休日=赤 |
-| `od_lines_expanded.qml` | 拡大係数適用後（`expanded_trips`）で線幅・透明度を制御。べき乗スケール（exponent=1.2）で多いルートを強調 |
+| `map/index.html` | 時刻別滞留人口アニメーションマップ。MapLibre GL JS 5.x + PMTiles 4.x。国土地理院最適化ベクトルタイル背景。平日/休日切替・時刻スライダー・再生ボタン・折りたたみパネル。配色: RdBu_r（青→白→赤、中央値195人=白） |
+
+ローカル確認: `python3 serve.py` → http://localhost:8000/map/（`python3 -m http.server` は Range リクエスト非対応のため使用不可）
+
+GitHub Pages: Settings → Pages → Branch: main / Folder: / (root) → https://shiwaku.github.io/r4-okayama-person-trip/map/
+
+### QMLスタイルファイル
+
+QML ファイルは対応するデータファイルと同じフォルダに配置（QGIS による自動認識のため）。
+
+| ファイル | 内容 |
+|---|---|
+| `data/od/od_lines.qml` | 生トリップ数（`trip_count`）で線幅・透明度を制御。平日=青、休日=赤 |
+| `data/od/od_lines_expanded.qml` | 拡大係数適用後（`expanded_trips`）で線幅・透明度を制御。べき乗スケール（exponent=1.2）で多いルートを強調 |
+| `data/zones/zone_population_weekday.qml` | 平日滞留人口の時系列スタイル（青→赤グラデーション） |
+| `data/zones/zone_population_holiday.qml` | 休日滞留人口の時系列スタイル |
 
 ### zone_polygons の属性
 
