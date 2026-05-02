@@ -5,9 +5,11 @@ from pathlib import Path
 
 ROOT_DIR = Path(__file__).parent.parent
 DATA_DIR = ROOT_DIR / "data"
+ZONES_DIR = DATA_DIR / "zones"
+PMTILES_DIR = DATA_DIR / "pmtiles"
 
-GEOJSON_PATH = DATA_DIR / "zone_population_map.geojson"
-PMTILES_PATH = DATA_DIR / "zone_population_map.pmtiles"
+GEOJSON_PATH = PMTILES_DIR / "zone_population_map.geojson"
+PMTILES_PATH = PMTILES_DIR / "zone_population_map.pmtiles"
 
 
 def load_and_pivot(path: Path, prefix: str) -> pd.DataFrame:
@@ -20,14 +22,14 @@ def load_and_pivot(path: Path, prefix: str) -> pd.DataFrame:
 
 def main() -> None:
     print("Loading zone polygons...")
-    zones = gpd.read_parquet(DATA_DIR / "zone_polygons.parquet")
+    zones = gpd.read_parquet(ZONES_DIR / "zone_polygons.parquet")
     zones = zones.to_crs("EPSG:4326")
     zones = zones[["zone_key", "city_name", "town_name", "geometry"]]
 
     print("Loading weekday population...")
-    wd = load_and_pivot(DATA_DIR / "zone_population_weekday.parquet", "w")
+    wd = load_and_pivot(ZONES_DIR / "zone_population_weekday.parquet", "w")
     print("Loading holiday population...")
-    hd = load_and_pivot(DATA_DIR / "zone_population_holiday.parquet", "h")
+    hd = load_and_pivot(ZONES_DIR / "zone_population_holiday.parquet", "h")
 
     result = zones.merge(wd, on="zone_key", how="left")
     result = result.merge(hd, on="zone_key", how="left")

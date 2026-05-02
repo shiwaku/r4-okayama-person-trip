@@ -17,6 +17,8 @@ import pandas as pd
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(ROOT_DIR, "data")
+ZONES_DIR = os.path.join(DATA_DIR, "zones")
+OD_DIR = os.path.join(DATA_DIR, "od")
 
 # ── データ読み込み ─────────────────────────────────────────────────────
 print("trips_full.csv 読み込み中...")
@@ -76,7 +78,7 @@ print(f"  expanded_trips 最大: {od['expanded_trips'].max():,.0f}")
 
 # ── ゾーン名称を付加（zone_coords.csv から） ─────────────────────────
 coords_df = pd.read_csv(
-    os.path.join(DATA_DIR, "zone_coords.csv"),
+    os.path.join(ZONES_DIR, "zone_coords.csv"),
     dtype={"city_code": str, "town_code": str},
     encoding="utf-8",
     usecols=["city_code", "town_code", "pref_name", "city_name", "town_name"],
@@ -120,7 +122,7 @@ for r in od.itertuples(index=False):
     })
 
 geojson = {"type": "FeatureCollection", "features": features}
-geojson_path = os.path.join(DATA_DIR, "od_lines.geojson")
+geojson_path = os.path.join(OD_DIR, "od_lines.geojson")
 with open(geojson_path, "w", encoding="utf-8") as f:
     json.dump(geojson, f, ensure_ascii=False)
 
@@ -149,7 +151,7 @@ try:
         geometry=geometry,
         crs="EPSG:4326",
     )
-    parquet_path = os.path.join(DATA_DIR, "od_lines.parquet")
+    parquet_path = os.path.join(OD_DIR, "od_lines.parquet")
     gdf.to_parquet(parquet_path)
     pq_mb = os.path.getsize(parquet_path) / 1024 / 1024
     print(f"  出力: {parquet_path}  ({pq_mb:.1f} MB)")

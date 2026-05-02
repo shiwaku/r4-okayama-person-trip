@@ -29,6 +29,7 @@ from pathlib import Path
 
 ROOT_DIR = Path(__file__).parent.parent
 DATA_DIR = ROOT_DIR / "data"
+ZONES_DIR = DATA_DIR / "zones"
 CSV_DIR = DATA_DIR / "csv"
 ESTAT_CACHE_DIR = DATA_DIR / "estat_r2ka33"
 MOJ_PARCEL_DIR = DATA_DIR / "moj_parcel"
@@ -451,10 +452,10 @@ def main():
         "polygon_source", "geometry",
     ]]
 
-    geojson_path = DATA_DIR / "zone_polygons.geojson"
+    geojson_path = ZONES_DIR / "zone_polygons.geojson"
     gdf_out.to_file(str(geojson_path), driver="GeoJSON")
 
-    parquet_path = DATA_DIR / "zone_polygons.parquet"
+    parquet_path = ZONES_DIR / "zone_polygons.parquet"
     gdf_out.to_parquet(str(parquet_path))
 
     # ── ゾーン重心座標（zone_coords）を zone_polygons から生成 ──────────
@@ -469,10 +470,10 @@ def main():
         "lat", "lon", "geometry",
     ]]
 
-    coords_csv_path = DATA_DIR / "zone_coords.csv"
+    coords_csv_path = ZONES_DIR / "zone_coords.csv"
     gdf_coords.drop(columns="geometry").to_csv(str(coords_csv_path), index=False, encoding="utf-8")
 
-    coords_geojson_path = DATA_DIR / "zone_coords.geojson"
+    coords_geojson_path = ZONES_DIR / "zone_coords.geojson"
     gdf_coords.to_file(str(coords_geojson_path), driver="GeoJSON")
 
     print(f"\n出力:")

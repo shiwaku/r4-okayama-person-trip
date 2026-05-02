@@ -11,14 +11,14 @@ data/moj_parcel/
 __pycache__/
 *.pyc
 
-# スクリプト生成物（大ファイル）
+# スクリプト生成物（大ファイル・gitignore）
 data/trips_full.csv
-data/od_lines.geojson
-data/zone_polygons.geojson
+data/od/od_lines.geojson
+data/zones/zone_polygons.geojson
 data/geocode_cache.json
-data/zone_population.parquet
-data/zone_population_map.geojson
-data/zone_population_map.pmtiles
+data/zones/zone_population.parquet
+data/pmtiles/zone_population_map.geojson
+# zone_population_map.pmtiles は GitHub Pages 配信用に git 管理
 
 # CSV変換出力（マスターデータ分のみ）
 data/csv/01_master_weekday.csv

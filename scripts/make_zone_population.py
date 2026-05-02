@@ -30,6 +30,7 @@ from pathlib import Path
 
 ROOT_DIR = Path(__file__).parent.parent
 DATA_DIR = ROOT_DIR / "data"
+ZONES_DIR = DATA_DIR / "zones"
 
 
 def to_minutes(ampm_s: pd.Series, h_s: pd.Series, m_s: pd.Series) -> pd.Series:
@@ -57,7 +58,7 @@ def main():
     # ── データ読み込み ──────────────────────────────────────────────────────
     print("trips_full.csv 読み込み中...")
     df = pd.read_csv(
-        DATA_DIR / "trips_full.csv",
+        DATA_DIR / "trips_full.csv",  # data/ 直下
         low_memory=False,
         dtype={
             "自宅住所_市町村": str, "自宅住所_町": str,
@@ -199,7 +200,7 @@ def main():
     print(sample[["hour", "population"]].to_string(index=False))
 
     # ── CSV 出力 ─────────────────────────────────────────────────────────
-    csv_path = DATA_DIR / "zone_population.csv"
+    csv_path = ZONES_DIR / "zone_population.csv"
     result.to_csv(str(csv_path), index=False, encoding="utf-8")
     print(f"\n出力: {csv_path}  ({csv_path.stat().st_size/1024/1024:.1f} MB)")
 
@@ -214,13 +215,13 @@ def main():
 
     # ── GeoParquet 出力（zone_polygons とジョイン、平日・休日別） ────────
     print("GeoParquet 出力中...")
-    zones = gpd.read_parquet(str(DATA_DIR / "zone_polygons.parquet"))
+    zones = gpd.read_parquet(str(ZONES_DIR / "zone_polygons.parquet"))
     gdf = zones.merge(result, on="zone_key", how="inner")
 
     SUFFIX = {"平日": "weekday", "休日": "holiday"}
     for day_type, suffix in SUFFIX.items():
         sub = gdf[gdf["day_type"] == day_type].copy()
-        pq_path = DATA_DIR / f"zone_population_{suffix}.parquet"
+        pq_path = ZONES_DIR / f"zone_population_{suffix}.parquet"
         sub.to_parquet(str(pq_path))
         print(f"出力: {pq_path}  ({pq_path.stat().st_size/1024/1024:.1f} MB)")
         print(f"  フィーチャ数: {len(sub):,}  ゾーン数: {sub['zone_key'].nunique():,}")

@@ -14,6 +14,7 @@ import openpyxl
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SOURCE_DIR = os.path.join(ROOT_DIR, "source")
 DATA_DIR = os.path.join(ROOT_DIR, "data")
+ZONES_DIR = os.path.join(DATA_DIR, "zones")
 
 # ── コード定義 ────────────────────────────────────────────────────────────
 GENDER      = {1: "男性", 2: "女性"}
@@ -204,7 +205,7 @@ for i, n in enumerate(unique_col_names):
 # ── 座標ルックアップ ─────────────────────────────────────────────────────
 print("\n座標ルックアップ読み込み中...")
 coords_df = pd.read_csv(
-    os.path.join(DATA_DIR, "zone_coords.csv"),
+    os.path.join(ZONES_DIR, "zone_coords.csv"),
     dtype={"city_code": str, "town_code": str},
     encoding="utf-8",
 )
