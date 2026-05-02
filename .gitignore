@@ -17,6 +17,8 @@ data/od_lines.geojson
 data/zone_polygons.geojson
 data/geocode_cache.json
 data/zone_population.parquet
+data/zone_population_map.geojson
+data/zone_population_map.pmtiles
 
 # CSV変換出力（マスターデータ分のみ）
 data/csv/01_master_weekday.csv
