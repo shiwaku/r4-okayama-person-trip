@@ -131,12 +131,14 @@
 
   <div id="legend">
     <h2>滞留人口（推計）</h2>
-    <div class="legend-row"><div class="legend-swatch" style="background:#800026"></div><span>3,000人以上</span></div>
-    <div class="legend-row"><div class="legend-swatch" style="background:#bd0026"></div><span>1,000〜3,000人</span></div>
-    <div class="legend-row"><div class="legend-swatch" style="background:#e31a1c"></div><span>500〜1,000人</span></div>
-    <div class="legend-row"><div class="legend-swatch" style="background:#fd8d3c"></div><span>100〜500人</span></div>
-    <div class="legend-row"><div class="legend-swatch" style="background:#fed976"></div><span>10〜100人</span></div>
-    <div class="legend-row"><div class="legend-swatch" style="background:#ffffcc; border:1px solid #888"></div><span>1〜10人</span></div>
+    <div class="legend-row"><div class="legend-swatch" style="background:#67001f"></div><span>3,000人以上</span></div>
+    <div class="legend-row"><div class="legend-swatch" style="background:#b2182b"></div><span>1,000〜3,000人</span></div>
+    <div class="legend-row"><div class="legend-swatch" style="background:#d6604d"></div><span>500〜1,000人</span></div>
+    <div class="legend-row"><div class="legend-swatch" style="background:#f4a582"></div><span>〜500人</span></div>
+    <div class="legend-row"><div class="legend-swatch" style="background:#f7f7f7; border:1px solid #aaa"></div><span>〜195人（中央値）</span></div>
+    <div class="legend-row"><div class="legend-swatch" style="background:#92c5de"></div><span>〜50人</span></div>
+    <div class="legend-row"><div class="legend-swatch" style="background:#4393c3"></div><span>〜10人</span></div>
+    <div class="legend-row"><div class="legend-swatch" style="background:#2166ac"></div><span>1人</span></div>
     <div class="legend-row"><div class="legend-swatch" style="background:rgba(200,200,200,0.3); border:1px solid #555"></div><span>データなし</span></div>
   </div>
 
@@ -171,15 +173,17 @@
     let playing = false;
     let timer = null;
 
-    // YlOrRd log scale: ln(1)=0 ... ln(7000)≈8.86
+    // RdBu_r (blue→white→red), log scale: ln(1)=0 … ln(7000)≈8.86
+    // 中央値 ~195人 (ln≈5.27) を白に設定
     const COLOR_STOPS = [
-      [0,    '#ffffcc'],
-      [2.30, '#fed976'],  // 10人
-      [4.61, '#fd8d3c'],  // 100人
-      [6.21, '#fc4e2a'],  // 500人
-      [6.91, '#e31a1c'],  // 1,000人
-      [8.01, '#bd0026'],  // 3,000人
-      [8.86, '#800026'],  // 7,000人
+      [0,    '#2166ac'],  // 1人  強青
+      [2.30, '#4393c3'],  // 10人
+      [3.91, '#92c5de'],  // 50人
+      [5.27, '#f7f7f7'],  // ~195人（中央値）白
+      [6.21, '#f4a582'],  // 500人
+      [6.91, '#d6604d'],  // 1,000人
+      [8.01, '#b2182b'],  // 3,000人
+      [8.86, '#67001f'],  // 7,000人 強赤
     ];
 
     function buildColorExpr(prefix, h) {
