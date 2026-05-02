@@ -185,7 +185,9 @@
       style: 'https://gsi-cyberjapan.github.io/optimal_bvmap/style/std.json',
       center: [133.92, 34.92],
       zoom: 9,
-      attributionControl: true
+      attributionControl: {
+        customAttribution: '<a href="https://www.okayama-opendata.jp/datasets/6694" target="_blank">岡山県パーソントリップ調査</a>（おかやまオープンデータカタログ）を加工して作成'
+      }
     });
 
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
